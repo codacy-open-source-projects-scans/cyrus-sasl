@@ -212,7 +212,7 @@ if test $sasl_cv_uscore = yes; then
 void foo() { int i=0;}
 int main() { void *self, *ptr1, *ptr2; self=dlopen(NULL,RTLD_LAZY);
     if(self) { ptr1=dlsym(self,"foo"); ptr2=dlsym(self,"_foo");
-    if(ptr1 && !ptr2) exit(0); } exit(1); } 
+    if(ptr1 && !ptr2) return 0; } return 1; } 
 ]])],[sasl_cv_dlsym_adds_uscore=yes],[sasl_cv_dlsym_adds_uscore=no],[AC_MSG_WARN(cross-compiler, we'll do our best)])])
 	LIBS="$cmu_save_LIBS"
       AC_MSG_RESULT($sasl_cv_dlsym_adds_uscore)
@@ -306,13 +306,20 @@ else
   AC_MSG_RESULT(disabled)
 fi
 
+CMU_HAVE_OPENSSL
+AC_MSG_CHECKING(for OpenSSL)
+AC_MSG_RESULT($with_openssl)
+if test "$with_openssl" = no; then
+  AC_MSG_ERROR(OpenSSL not found)
+fi
+
 dnl CRAM-MD5
 AC_ARG_ENABLE(cram, [  --enable-cram           enable CRAM-MD5 authentication [[yes]] ],
   cram=$enableval,
   cram=yes)
 
 AC_MSG_CHECKING(CRAM-MD5)
-if test "$cram" != no; then
+if test "$cram" != no -a $ac_cv_lib_crypto_MD5_Init = yes; then
   AC_MSG_RESULT(enabled)
   SASL_MECHS="$SASL_MECHS libcrammd5.la"
   if test "$enable_obsolete_cram_attr" = yes; then
@@ -326,10 +333,6 @@ if test "$cram" != no; then
 else
   AC_MSG_RESULT(disabled)
 fi
-
-CMU_HAVE_OPENSSL
-AC_MSG_CHECKING(for OpenSSL)
-AC_MSG_RESULT($with_openssl)
 
 SASL_DES_CHK
 
@@ -350,7 +353,7 @@ if test "$digest" != no; then
 fi
 
 AC_MSG_CHECKING(DIGEST-MD5)
-if test "$digest" != no; then
+if test "$digest" != no -a $ac_cv_lib_crypto_MD5_Init = yes; then
   AC_MSG_RESULT(enabled)
   SASL_MECHS="$SASL_MECHS libdigestmd5.la"
   if test "$enable_obsolete_digest_attr" = yes; then
@@ -370,11 +373,6 @@ dnl SCRAM
 AC_ARG_ENABLE(scram, [  --enable-scram            enable SCRAM authentication [[yes]] ],
   scram=$enableval,
   scram=yes)
-
-if test "$with_openssl" = no; then
-  AC_MSG_WARN(OpenSSL not found -- SCRAM will be disabled)
-  scram=no
-fi
 
 AC_MSG_CHECKING(SCRAM)
 if test "$scram" != no; then
@@ -397,11 +395,6 @@ dnl OTP
 AC_ARG_ENABLE(otp, [  --enable-otp            enable OTP authentication [[yes]] ],
   otp=$enableval,
   otp=yes)
-
-if test "$with_openssl" = no; then
-  AC_MSG_WARN(OpenSSL not found -- OTP will be disabled)
-  otp=no
-fi
 
 AC_MSG_CHECKING(OTP)
 if test "$otp" != no; then
@@ -453,11 +446,6 @@ dnl SRP
 AC_ARG_ENABLE(srp, [  --enable-srp            enable SRP authentication [[no]] ],
   srp=$enableval,
   srp=no)
-
-if test "$with_openssl" = no; then
-  AC_MSG_WARN(OpenSSL not found -- SRP will be disabled)
-  srp=no
-fi
 
 AC_MSG_CHECKING(SRP)
 if test "$srp" != no; then
@@ -650,11 +638,6 @@ AC_ARG_ENABLE(ntlm, [  --enable-ntlm           enable unsupported NTLM authentic
   ntlm=$enableval,
   ntlm=no)
 
-if test "$with_openssl" = no; then
-  AC_MSG_WARN(OpenSSL not found -- NTLM will be disabled)
-  ntlm=no
-fi
-
 AC_MSG_CHECKING(NTLM)
 if test "$ntlm" != no; then
   AC_MSG_RESULT(enabled)
@@ -675,11 +658,6 @@ dnl PASSDSS
 AC_ARG_ENABLE(passdss, [  --enable-passdss        enable PASSDSS authentication (experimental) [[no]] ],
   passdss=$enableval,
   passdss=no)
-
-if test "$with_openssl" = no; then
-  AC_MSG_WARN(OpenSSL not found -- PASSDSS will be disabled)
-  passdss=no
-fi
 
 AC_MSG_CHECKING(PASSDSS)
 if test "$passdss" != no; then
@@ -712,10 +690,8 @@ fi
 LDAP_LIBS=""
 if test "$with_ldap" != no; then
   AC_CHECK_LIB(ldap, ldap_initialize, [ AC_DEFINE(HAVE_LDAP,[],[Support for LDAP?])
-                                        LDAP_LIBS="-lldap -llber"
-					if test "$with_openssl" != "no"; then
-					    LDAP_LIBS="$LDAP_LIBS -lcrypto $LIB_RSAREF"
-					fi],,-llber)
+                                        LDAP_LIBS="-lldap -llber -lcrypto $LIB_RSAREF"
+					],,-llber)
 fi
 AC_SUBST(LDAP_LIBS)
 
@@ -1085,14 +1061,6 @@ AC_ARG_WITH(configdir, [   --with-configdir=DIR    set the directory where confi
   configdir=$withval,
   configdir='${plugindir}:${sysconfdir}/sasl2')
 AC_SUBST(configdir)
-
-AC_ARG_WITH(rc4, [  --with-rc4              use rc4 routines [[yes]] ],
-	with_rc4=$withval,
-	with_rc4=yes)
-
-if test "$with_rc4" != no; then
-    AC_DEFINE(WITH_RC4,[],[Use RC4])
-fi
 
 building_for_macosx=no
 case "$host_os" in

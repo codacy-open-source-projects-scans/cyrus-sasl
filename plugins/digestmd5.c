@@ -57,6 +57,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 
+#include <openssl/evp.h>
 /* DES support */
 #ifdef WITH_DES
 # ifdef WITH_SSL_DES
@@ -332,47 +333,47 @@ DigestCalcResponse(const sasl_utils_t * utils,
 		   HASHHEX Response	/* request-digest or response-digest */
     )
 {
-    MD5_CTX         Md5Ctx;
+    EVP_MD_CTX      *Md5Ctx = EVP_MD_CTX_new();
     HASH            HA2;
     HASH            RespHash;
     HASHHEX         HA2Hex;
     unsigned char ncvalue[10];
     
     /* calculate H(A2) */
-    utils->MD5Init(&Md5Ctx);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
     
     if (pszMethod != NULL) {
-	utils->MD5Update(&Md5Ctx, pszMethod, (unsigned) strlen((char *) pszMethod));
+	EVP_DigestUpdate(Md5Ctx, pszMethod, (unsigned) strlen((char *) pszMethod));
     }
-    utils->MD5Update(&Md5Ctx, (unsigned char *) COLON, 1);
+    EVP_DigestUpdate(Md5Ctx, (unsigned char *) COLON, 1);
     
-    /* utils->MD5Update(&Md5Ctx, (unsigned char *) "AUTHENTICATE:", 13); */
-    utils->MD5Update(&Md5Ctx, pszDigestUri, (unsigned) strlen((char *) pszDigestUri));
+    /* EVP_DigestUpdate(Md5Ctx, (unsigned char *) "AUTHENTICATE:", 13); */
+    EVP_DigestUpdate(Md5Ctx, pszDigestUri, (unsigned) strlen((char *) pszDigestUri));
     if (strcasecmp((char *) pszQop, "auth") != 0) {
 	/* append ":00000000000000000000000000000000" */
-	utils->MD5Update(&Md5Ctx, COLON, 1);
-	utils->MD5Update(&Md5Ctx, HEntity, HASHHEXLEN);
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, HEntity, HASHHEXLEN);
     }
-    utils->MD5Final(HA2, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, HA2, NULL);
     CvtHex(HA2, HA2Hex);
     
     /* calculate response */
-    utils->MD5Init(&Md5Ctx);
-    utils->MD5Update(&Md5Ctx, HA1, HASHHEXLEN);
-    utils->MD5Update(&Md5Ctx, COLON, 1);
-    utils->MD5Update(&Md5Ctx, pszNonce, (unsigned) strlen((char *) pszNonce));
-    utils->MD5Update(&Md5Ctx, COLON, 1);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
+    EVP_DigestUpdate(Md5Ctx, HA1, HASHHEXLEN);
+    EVP_DigestUpdate(Md5Ctx, COLON, 1);
+    EVP_DigestUpdate(Md5Ctx, pszNonce, (unsigned) strlen((char *) pszNonce));
+    EVP_DigestUpdate(Md5Ctx, COLON, 1);
     if (*pszQop) {
 	sprintf((char *)ncvalue, "%08x", pszNonceCount);
-	utils->MD5Update(&Md5Ctx, ncvalue, (unsigned) strlen((char *)ncvalue));
-	utils->MD5Update(&Md5Ctx, COLON, 1);
-	utils->MD5Update(&Md5Ctx, pszCNonce, (unsigned) strlen((char *) pszCNonce));
-	utils->MD5Update(&Md5Ctx, COLON, 1);
-	utils->MD5Update(&Md5Ctx, pszQop, (unsigned) strlen((char *) pszQop));
-	utils->MD5Update(&Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, ncvalue, (unsigned) strlen((char *)ncvalue));
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, pszCNonce, (unsigned) strlen((char *) pszCNonce));
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, pszQop, (unsigned) strlen((char *) pszQop));
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
     }
-    utils->MD5Update(&Md5Ctx, HA2Hex, HASHHEXLEN);
-    utils->MD5Final(RespHash, &Md5Ctx);
+    EVP_DigestUpdate(Md5Ctx, HA2Hex, HASHHEXLEN);
+    EVP_DigestFinal(Md5Ctx, RespHash, NULL);
     CvtHex(RespHash, Response);
 }
 
@@ -398,8 +399,7 @@ static bool UTF8_In_8859_1(const unsigned char *base, size_t len)
  * if the string is entirely in the 8859-1 subset of UTF-8, then translate to
  * 8859-1 prior to MD5
  */
-static void MD5_UTF8_8859_1(const sasl_utils_t * utils,
-			    MD5_CTX * ctx,
+static void MD5_UTF8_8859_1(EVP_MD_CTX * ctx,
 			    bool In_ISO_8859_1,
 			    const unsigned char *base,
 			    int len)
@@ -411,18 +411,18 @@ static void MD5_UTF8_8859_1(const sasl_utils_t * utils,
     
     /* if we found a character outside 8859-1, don't alter string */
     if (!In_ISO_8859_1) {
-	utils->MD5Update(ctx, base, len);
+	EVP_DigestUpdate(ctx, base, len);
 	return;
     }
     /* convert to 8859-1 prior to applying hash */
     do {
 	for (scan = base; scan < end && *scan < 0xC0; ++scan);
 	if (scan != base)
-	    utils->MD5Update(ctx, base, (unsigned) (scan - base));
+	    EVP_DigestUpdate(ctx, base, (unsigned) (scan - base));
 	if (scan + 1 >= end)
 	    break;
 	cbuf = ((scan[0] & 0x3) << 6) | (scan[1] & 0x3f);
-	utils->MD5Update(ctx, &cbuf, 1);
+	EVP_DigestUpdate(ctx, &cbuf, 1);
 	base = scan + 2;
     }
     while (base < end);
@@ -441,51 +441,51 @@ static bool DigestCalcSecret(const sasl_utils_t * utils,
 {
     bool            In_8859_1;
     bool            Any_8859_1 = FALSE;
-    MD5_CTX         Md5Ctx;
+    EVP_MD_CTX      *Md5Ctx = EVP_MD_CTX_new();
     
     /* Chris Newman clarified that the following text in DIGEST-MD5 spec
        is bogus: "if name and password are both in ISO 8859-1 charset"
        We shoud use code example instead */
     
-    utils->MD5Init(&Md5Ctx);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
     
     /* We have to convert UTF-8 to ISO-8859-1 if possible */
     if (Ignore_8859 == FALSE) {
 	In_8859_1 = UTF8_In_8859_1(pszUserName, strlen((char *) pszUserName));
-	MD5_UTF8_8859_1(utils, &Md5Ctx, In_8859_1,
+	MD5_UTF8_8859_1(Md5Ctx, In_8859_1,
 			pszUserName, (unsigned) strlen((char *) pszUserName));
 	Any_8859_1 |= In_8859_1;
     } else {
-	utils->MD5Update(&Md5Ctx, pszUserName, (unsigned) strlen((char *) pszUserName));
+	EVP_DigestUpdate(Md5Ctx, pszUserName, (unsigned) strlen((char *) pszUserName));
     }
     
-    utils->MD5Update(&Md5Ctx, COLON, 1);
+    EVP_DigestUpdate(Md5Ctx, COLON, 1);
     
     /* a NULL realm is equivalent to the empty string */
     if (pszRealm != NULL && pszRealm[0] != '\0') {
 	if (Ignore_8859 == FALSE) {
 	    /* We have to convert UTF-8 to ISO-8859-1 if possible */
 	    In_8859_1 = UTF8_In_8859_1(pszRealm, strlen((char *) pszRealm));
-	    MD5_UTF8_8859_1(utils, &Md5Ctx, In_8859_1,
+	    MD5_UTF8_8859_1(Md5Ctx, In_8859_1,
 			    pszRealm, (unsigned) strlen((char *) pszRealm));
 	    Any_8859_1 |= In_8859_1;
 	} else {
-	   utils->MD5Update(&Md5Ctx, pszRealm, (unsigned) strlen((char *) pszRealm));
+	   EVP_DigestUpdate(Md5Ctx, pszRealm, (unsigned) strlen((char *) pszRealm));
 	}
     }  
     
-    utils->MD5Update(&Md5Ctx, COLON, 1);
+    EVP_DigestUpdate(Md5Ctx, COLON, 1);
 
     if (Ignore_8859 == FALSE) {
 	/* We have to convert UTF-8 to ISO-8859-1 if possible */
 	In_8859_1 = UTF8_In_8859_1(Password, PasswordLen);
-	MD5_UTF8_8859_1(utils, &Md5Ctx, In_8859_1,
+	MD5_UTF8_8859_1(Md5Ctx, In_8859_1,
 			Password, PasswordLen);
 	Any_8859_1 |= In_8859_1;
     } else {
-	utils->MD5Update(&Md5Ctx, Password, PasswordLen);
+	EVP_DigestUpdate(Md5Ctx, Password, PasswordLen);
     }
-    utils->MD5Final(HA1, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, HA1, NULL);
 
     return Any_8859_1;
 }
@@ -1117,301 +1117,8 @@ static void free_des(context_t *text)
 
 #endif /* WITH_DES */
 
-#ifdef WITH_RC4
-#ifdef HAVE_OPENSSL
-#include <openssl/evp.h>
-
-static void free_rc4(context_t *text)
-{
-    if (text->cipher_enc_context) {
-        EVP_CIPHER_CTX_free((EVP_CIPHER_CTX *)text->cipher_enc_context);
-        text->cipher_enc_context = NULL;
-    }
-    if (text->cipher_dec_context) {
-        EVP_CIPHER_CTX_free((EVP_CIPHER_CTX *)text->cipher_dec_context);
-        text->cipher_dec_context = NULL;
-    }
-}
-
-static int init_rc4(context_t *text,
-		    unsigned char enckey[16],
-		    unsigned char deckey[16])
-{
-    EVP_CIPHER_CTX *ctx;
-    int rc;
-
-    ctx = EVP_CIPHER_CTX_new();
-    if (ctx == NULL) return SASL_NOMEM;
-
-    rc = EVP_EncryptInit_ex(ctx, EVP_rc4(), NULL, enckey, NULL);
-    if (rc != 1) return SASL_FAIL;
-
-    text->cipher_enc_context = (void *)ctx;
-
-    ctx = EVP_CIPHER_CTX_new();
-    if (ctx == NULL) return SASL_NOMEM;
-
-    rc = EVP_DecryptInit_ex(ctx, EVP_rc4(), NULL, deckey, NULL);
-    if (rc != 1) return SASL_FAIL;
-
-    text->cipher_dec_context = (void *)ctx;
-
-    return SASL_OK;
-}
-
-static int dec_rc4(context_t *text,
-		   const char *input,
-		   unsigned inputlen,
-		   unsigned char digest[16] __attribute__((unused)),
-		   char *output,
-		   unsigned *outputlen)
-{
-    int len;
-    int rc;
-
-    /* decrypt the text part & HMAC */
-    rc = EVP_DecryptUpdate((EVP_CIPHER_CTX *)text->cipher_dec_context,
-                           (unsigned char *)output, &len,
-                           (const unsigned char *)input, inputlen);
-    if (rc != 1) return SASL_FAIL;
-
-    *outputlen = len;
-
-    rc = EVP_DecryptFinal_ex((EVP_CIPHER_CTX *)text->cipher_dec_context,
-                             (unsigned char *)output + len, &len);
-    if (rc != 1) return SASL_FAIL;
-
-    *outputlen += len;
-
-    /* subtract the HMAC to get the text length */
-    *outputlen -= 10;
-
-    return SASL_OK;
-}
-
-static int enc_rc4(context_t *text,
-		   const char *input,
-		   unsigned inputlen,
-		   unsigned char digest[16],
-		   char *output,
-		   unsigned *outputlen)
-{
-    int len;
-    int rc;
-    /* encrypt the text part */
-    rc = EVP_EncryptUpdate((EVP_CIPHER_CTX *)text->cipher_enc_context,
-                           (unsigned char *)output, &len,
-                           (const unsigned char *)input, inputlen);
-    if (rc != 1) return SASL_FAIL;
-
-    *outputlen = len;
-
-    /* encrypt the `MAC part */
-    rc = EVP_EncryptUpdate((EVP_CIPHER_CTX *)text->cipher_enc_context,
-                           (unsigned char *)output + *outputlen, &len,
-                           digest, 10);
-    if (rc != 1) return SASL_FAIL;
-
-    *outputlen += len;
-
-    rc = EVP_EncryptFinal_ex((EVP_CIPHER_CTX *)text->cipher_enc_context,
-                             (unsigned char *)output + *outputlen, &len);
-    if (rc != 1) return SASL_FAIL;
-
-    *outputlen += len;
-
-    return SASL_OK;
-}
-#else
-/* quick generic implementation of RC4 */
-struct rc4_context_s {
-    unsigned char sbox[256];
-    int i, j;
-};
-
-typedef struct rc4_context_s rc4_context_t;
-
-static void rc4_init(rc4_context_t *text,
-		     const unsigned char *key,
-		     unsigned keylen)
-{
-    int i, j;
-    
-    /* fill in linearly s0=0 s1=1... */
-    for (i=0;i<256;i++)
-	text->sbox[i]=i;
-    
-    j=0;
-    for (i = 0; i < 256; i++) {
-	unsigned char tmp;
-	/* j = (j + Si + Ki) mod 256 */
-	j = (j + text->sbox[i] + key[i % keylen]) % 256;
-	
-	/* swap Si and Sj */
-	tmp = text->sbox[i];
-	text->sbox[i] = text->sbox[j];
-	text->sbox[j] = tmp;
-    }
-    
-    /* counters initialized to 0 */
-    text->i = 0;
-    text->j = 0;
-}
-
-static void rc4_encrypt(rc4_context_t *text,
-			const char *input,
-			char *output,
-			unsigned len)
-{
-    int tmp;
-    int i = text->i;
-    int j = text->j;
-    int t;
-    int K;
-    const char *input_end = input + len;
-    
-    while (input < input_end) {
-	i = (i + 1) % 256;
-	
-	j = (j + text->sbox[i]) % 256;
-	
-	/* swap Si and Sj */
-	tmp = text->sbox[i];
-	text->sbox[i] = text->sbox[j];
-	text->sbox[j] = tmp;
-	
-	t = (text->sbox[i] + text->sbox[j]) % 256;
-	
-	K = text->sbox[t];
-	
-	/* byte K is Xor'ed with plaintext */
-	*output++ = *input++ ^ K;
-    }
-    
-    text->i = i;
-    text->j = j;
-}
-
-static void rc4_decrypt(rc4_context_t *text,
-			const char *input,
-			char *output,
-			unsigned len)
-{
-    int tmp;
-    int i = text->i;
-    int j = text->j;
-    int t;
-    int K;
-    const char *input_end = input + len;
-    
-    while (input < input_end) {
-	i = (i + 1) % 256;
-	
-	j = (j + text->sbox[i]) % 256;
-	
-	/* swap Si and Sj */
-	tmp = text->sbox[i];
-	text->sbox[i] = text->sbox[j];
-	text->sbox[j] = tmp;
-	
-	t = (text->sbox[i] + text->sbox[j]) % 256;
-	
-	K = text->sbox[t];
-	
-	/* byte K is Xor'ed with plaintext */
-	*output++ = *input++ ^ K;
-    }
-    
-    text->i = i;
-    text->j = j;
-}
-
-static void free_rc4(context_t *text)
-{
-    /* free rc4 context structures */
-
-    if (text->cipher_enc_context) {
-        text->utils->free(text->cipher_enc_context);
-        text->cipher_enc_context = NULL;
-    }
-    if (text->cipher_dec_context) {
-        text->utils->free(text->cipher_dec_context);
-        text->cipher_dec_context = NULL;
-    }
-}
-
-static int init_rc4(context_t *text, 
-		    unsigned char enckey[16],
-		    unsigned char deckey[16])
-{
-    /* allocate rc4 context structures */
-    text->cipher_enc_context=
-	(cipher_context_t *) text->utils->malloc(sizeof(rc4_context_t));
-    if (text->cipher_enc_context == NULL) return SASL_NOMEM;
-    
-    text->cipher_dec_context=
-	(cipher_context_t *) text->utils->malloc(sizeof(rc4_context_t));
-    if (text->cipher_dec_context == NULL) return SASL_NOMEM;
-    
-    /* initialize them */
-    rc4_init((rc4_context_t *) text->cipher_enc_context,
-             (const unsigned char *) enckey, 16);
-    rc4_init((rc4_context_t *) text->cipher_dec_context,
-             (const unsigned char *) deckey, 16);
-    
-    return SASL_OK;
-}
-
-static int dec_rc4(context_t *text,
-		   const char *input,
-		   unsigned inputlen,
-		   unsigned char digest[16] __attribute__((unused)),
-		   char *output,
-		   unsigned *outputlen)
-{
-    /* decrypt the text part & HMAC */
-    rc4_decrypt((rc4_context_t *) text->cipher_dec_context, 
-                input, output, inputlen);
-
-    /* no padding so we just subtract the HMAC to get the text length */
-    *outputlen = inputlen - 10;
-    
-    return SASL_OK;
-}
-
-static int enc_rc4(context_t *text,
-		   const char *input,
-		   unsigned inputlen,
-		   unsigned char digest[16],
-		   char *output,
-		   unsigned *outputlen)
-{
-    /* pad is zero */
-    *outputlen = inputlen+10;
-    
-    /* encrypt the text part */
-    rc4_encrypt((rc4_context_t *) text->cipher_enc_context,
-                input,
-                output,
-                inputlen);
-    
-    /* encrypt the HMAC part */
-    rc4_encrypt((rc4_context_t *) text->cipher_enc_context, 
-                (const char *) digest, 
-		(output)+inputlen, 10);
-    
-    return SASL_OK;
-}
-#endif /* HAVE_OPENSSL */
-#endif /* WITH_RC4 */
-
 struct digest_cipher available_ciphers[] =
 {
-#ifdef WITH_RC4
-    { "rc4-40", 40, 5, 0x01, &enc_rc4, &dec_rc4, &init_rc4, &free_rc4 },
-    { "rc4-56", 56, 7, 0x02, &enc_rc4, &dec_rc4, &init_rc4, &free_rc4 },
-    { "rc4", 128, 16, 0x04, &enc_rc4, &dec_rc4, &init_rc4, &free_rc4 },
-#endif
 #ifdef WITH_DES
     { "des", 55, 16, 0x08, &enc_des, &dec_des, &init_des, &free_des },
     { "3des", 112, 16, 0x10, &enc_3des, &dec_3des, &init_3des, &free_des },
@@ -1425,57 +1132,57 @@ static int create_layer_keys(context_t *text,
 			     unsigned char enckey[16],
 			     unsigned char deckey[16])
 {
-    MD5_CTX Md5Ctx;
+    EVP_MD_CTX *Md5Ctx = EVP_MD_CTX_new();
     
     utils->log(utils->conn, SASL_LOG_DEBUG,
 	       "DIGEST-MD5 create_layer_keys()");
 
-    utils->MD5Init(&Md5Ctx);
-    utils->MD5Update(&Md5Ctx, key, keylen);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
+    EVP_DigestUpdate(Md5Ctx, key, keylen);
     if (text->i_am == SERVER) {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *) SEALING_SERVER_CLIENT, 
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *) SEALING_SERVER_CLIENT,
 			 (unsigned) strlen(SEALING_SERVER_CLIENT));
     } else {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *) SEALING_CLIENT_SERVER,
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *) SEALING_CLIENT_SERVER,
 			 (unsigned) strlen(SEALING_CLIENT_SERVER));
     }
-    utils->MD5Final(enckey, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, enckey, NULL);
     
-    utils->MD5Init(&Md5Ctx);
-    utils->MD5Update(&Md5Ctx, key, keylen);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
+    EVP_DigestUpdate(Md5Ctx, key, keylen);
     if (text->i_am != SERVER) {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *) SEALING_SERVER_CLIENT, 
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *) SEALING_SERVER_CLIENT,
 			 (unsigned) strlen(SEALING_SERVER_CLIENT));
     } else {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *) SEALING_CLIENT_SERVER,
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *) SEALING_CLIENT_SERVER,
 			 (unsigned) strlen(SEALING_CLIENT_SERVER));
     }
-    utils->MD5Final(deckey, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, deckey, NULL);
     
     /* create integrity keys */
     /* sending */
-    utils->MD5Init(&Md5Ctx);
-    utils->MD5Update(&Md5Ctx, text->HA1, HASHLEN);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
+    EVP_DigestUpdate(Md5Ctx, text->HA1, HASHLEN);
     if (text->i_am == SERVER) {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *)SIGNING_SERVER_CLIENT, 
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *)SIGNING_SERVER_CLIENT,
 			 (unsigned) strlen(SIGNING_SERVER_CLIENT));
     } else {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *)SIGNING_CLIENT_SERVER,
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *)SIGNING_CLIENT_SERVER,
 			 (unsigned) strlen(SIGNING_CLIENT_SERVER));
     }
-    utils->MD5Final(text->Ki_send, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, text->Ki_send, NULL);
     
     /* receiving */
-    utils->MD5Init(&Md5Ctx);
-    utils->MD5Update(&Md5Ctx, text->HA1, HASHLEN);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
+    EVP_DigestUpdate(Md5Ctx, text->HA1, HASHLEN);
     if (text->i_am != SERVER) {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *)SIGNING_SERVER_CLIENT, 
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *)SIGNING_SERVER_CLIENT,
 			 (unsigned) strlen(SIGNING_SERVER_CLIENT));
     } else {
-	utils->MD5Update(&Md5Ctx, (const unsigned char *)SIGNING_CLIENT_SERVER,
+	EVP_DigestUpdate(Md5Ctx, (const unsigned char *)SIGNING_CLIENT_SERVER,
 			 (unsigned) strlen(SIGNING_CLIENT_SERVER));
     }
-    utils->MD5Final(text->Ki_receive, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, text->Ki_receive, NULL);
     
     return SASL_OK;
 }
@@ -1801,31 +1508,31 @@ static void DigestCalcHA1FromSecret(context_t * text,
 				    unsigned char *pszCNonce,
 				    HASHHEX SessionKey)
 {
-    MD5_CTX Md5Ctx;
+    EVP_MD_CTX *Md5Ctx = EVP_MD_CTX_new();
     
     /* calculate session key */
-    utils->MD5Init(&Md5Ctx);
+    EVP_DigestInit(Md5Ctx, EVP_md5());
     if (text->http_mode) {
 	/* per RFC 2617 Errata ID 1649 */
 	HASHHEX HA1Hex;
     
 	CvtHex(HA1, HA1Hex);
-	utils->MD5Update(&Md5Ctx, HA1Hex, HASHHEXLEN);
+	EVP_DigestUpdate(Md5Ctx, HA1Hex, HASHHEXLEN);
     }
     else {
 	/* per RFC 2831 */
-	utils->MD5Update(&Md5Ctx, HA1, HASHLEN);
+	EVP_DigestUpdate(Md5Ctx, HA1, HASHLEN);
     }
-    utils->MD5Update(&Md5Ctx, COLON, 1);
-    utils->MD5Update(&Md5Ctx, pszNonce, (unsigned) strlen((char *) pszNonce));
-    utils->MD5Update(&Md5Ctx, COLON, 1);
-    utils->MD5Update(&Md5Ctx, pszCNonce, (unsigned) strlen((char *) pszCNonce));
+    EVP_DigestUpdate(Md5Ctx, COLON, 1);
+    EVP_DigestUpdate(Md5Ctx, pszNonce, (unsigned) strlen((char *) pszNonce));
+    EVP_DigestUpdate(Md5Ctx, COLON, 1);
+    EVP_DigestUpdate(Md5Ctx, pszCNonce, (unsigned) strlen((char *) pszCNonce));
     if (authorization_id != NULL) {
-	utils->MD5Update(&Md5Ctx, COLON, 1);
-	utils->MD5Update(&Md5Ctx, authorization_id,
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, authorization_id,
 			(unsigned) strlen((char *) authorization_id));
     }
-    utils->MD5Final(HA1, &Md5Ctx);
+    EVP_DigestFinal(Md5Ctx, HA1, NULL);
     
     CvtHex(HA1, SessionKey);
     
@@ -1863,11 +1570,11 @@ static char *create_response(context_t * text,
 
     if (text->http_mode) {
 	/* per RFC 2617 */
-	MD5_CTX Md5Ctx;
+	EVP_MD_CTX *Md5Ctx = EVP_MD_CTX_new();
 
-	utils->MD5Init(&Md5Ctx);
-	utils->MD5Update(&Md5Ctx, request->entity, request->elen);
-	utils->MD5Final(EntityHash, &Md5Ctx);
+	EVP_DigestInit(Md5Ctx, EVP_md5());
+	EVP_DigestUpdate(Md5Ctx, request->entity, request->elen);
+	EVP_DigestFinal(Md5Ctx, EntityHash, NULL);
     }
     else {
 	/* per RFC 2831 */
@@ -3206,9 +2913,7 @@ static sasl_server_plug_t digestmd5_server_plugins[] =
 {
     {
 	"DIGEST-MD5",			/* mech_name */
-#ifdef WITH_RC4
-	128,				/* max_ssf */
-#elif defined(WITH_DES)
+#if defined(WITH_DES)
 	112,
 #else 
 	1,
@@ -3323,7 +3028,7 @@ static void DigestCalcHA1(context_t * text,
 			  unsigned char *pszCNonce,
 			  HASHHEX SessionKey)
 {
-    MD5_CTX         Md5Ctx;
+    EVP_MD_CTX      *Md5Ctx = EVP_MD_CTX_new();
     HASH            HA1;
     
     DigestCalcSecret(utils,
@@ -3337,28 +3042,28 @@ static void DigestCalcHA1(context_t * text,
     if (!text->http_mode ||				    /* per RFC 2831 */
 	(pszAlg && strcasecmp(pszAlg, "md5-sess") == 0)) {  /* per RFC 2617 */
 	/* calculate the session key */
-	utils->MD5Init(&Md5Ctx);
+	EVP_DigestInit(Md5Ctx, EVP_md5());
 	if (text->http_mode) {
 	    /* per RFC 2617 Errata ID 1649 */
 	    HASHHEX HA1Hex;
     
 	    CvtHex(HA1, HA1Hex);
-	    utils->MD5Update(&Md5Ctx, HA1Hex, HASHHEXLEN);
+	    EVP_DigestUpdate(Md5Ctx, HA1Hex, HASHHEXLEN);
 	}
 	else {
 	    /* per RFC 2831 */
-	    utils->MD5Update(&Md5Ctx, HA1, HASHLEN);
+	    EVP_DigestUpdate(Md5Ctx, HA1, HASHLEN);
 	}
-	utils->MD5Update(&Md5Ctx, COLON, 1);
-	utils->MD5Update(&Md5Ctx, pszNonce, (unsigned) strlen((char *) pszNonce));
-	utils->MD5Update(&Md5Ctx, COLON, 1);
-	utils->MD5Update(&Md5Ctx, pszCNonce, (unsigned) strlen((char *) pszCNonce));
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, pszNonce, (unsigned) strlen((char *) pszNonce));
+	EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	EVP_DigestUpdate(Md5Ctx, pszCNonce, (unsigned) strlen((char *) pszCNonce));
 	if (pszAuthorization_id != NULL) {
-	    utils->MD5Update(&Md5Ctx, COLON, 1);
-	    utils->MD5Update(&Md5Ctx, pszAuthorization_id, 
+	    EVP_DigestUpdate(Md5Ctx, COLON, 1);
+	    EVP_DigestUpdate(Md5Ctx, pszAuthorization_id,
 			     (unsigned) strlen((char *) pszAuthorization_id));
 	}
-	utils->MD5Final(HA1, &Md5Ctx);
+	EVP_DigestFinal(Md5Ctx, HA1, NULL);
     }
     
     CvtHex(HA1, SessionKey);
@@ -3419,11 +3124,11 @@ static char *calculate_response(context_t * text,
     
     if (text->http_mode) {
 	/* per RFC 2617 */
-	MD5_CTX Md5Ctx;
+	EVP_MD_CTX *Md5Ctx = EVP_MD_CTX_new();
 
-	utils->MD5Init(&Md5Ctx);
-	utils->MD5Update(&Md5Ctx, request->entity, request->elen);
-	utils->MD5Final(EntityHash, &Md5Ctx);
+	EVP_DigestInit(Md5Ctx, EVP_md5());
+	EVP_DigestUpdate(Md5Ctx, request->entity, request->elen);
+	EVP_DigestFinal(Md5Ctx, EntityHash, NULL);
     }
     else {
 	/* per RFC 2831 */
@@ -4720,10 +4425,8 @@ static void digestmd5_client_mech_dispose(void *conn_context,
 static sasl_client_plug_t digestmd5_client_plugins[] =
 {
     {
-	"DIGEST-MD5",
-#ifdef WITH_RC4				/* mech_name */
-	128,				/* max ssf */
-#elif defined(WITH_DES)
+	"DIGEST-MD5",			/* mech_name */
+#if defined(WITH_DES)
 	112,
 #else
 	1,
