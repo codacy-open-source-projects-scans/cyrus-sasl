@@ -82,11 +82,6 @@ AC_ARG_ENABLE(obsolete_cram_attr,
               enable_obsolete_cram_attr=$enableval,
               enable_obsolete_cram_attr=yes)
 
-AC_ARG_ENABLE(obsolete_digest_attr,
-              [AS_HELP_STRING([--enable-obsolete_digest_attr],[enable support for cmusaslsecretDIGEST-MD5 auxprop property [[yes]]])],
-              enable_obsolete_digest_attr=$enableval,
-              enable_obsolete_digest_attr=yes)
-
 AC_PROG_CC
 AX_PROG_CC_FOR_BUILD
 AC_PROG_CPP
@@ -148,7 +143,7 @@ fi
 
 AM_CONDITIONAL(SAMPLE, test "$enable_sample" = yes)
 
-dnl call before we do the berkeley DB checks
+dnl call before we do the LMDB checks
 CMU_SOCKETS
 
 dnl we extracted this to config/sasldb.m4
@@ -159,8 +154,8 @@ AC_ARG_ENABLE(keep_db_open, [  --enable-keep-db-open   keep handle to DB open fo
                 keep_db_open=$enableval,
                 keep_db_open=no)
 
-# Disable if Berkeley DB and LMDB are not used
-if test "$dblib" != berkeley -a "$dblib" != lmdb; then
+# Disable if LMDB is not used
+if test "$dblib" != lmdb; then
   keep_db_open=no
 fi
 
@@ -334,41 +329,6 @@ else
   AC_MSG_RESULT(disabled)
 fi
 
-SASL_DES_CHK
-
-dnl DIGEST-MD5
-AC_ARG_ENABLE(digest, [  --enable-digest         enable DIGEST-MD5 authentication [[yes]] ],
-  digest=$enableval,
-  digest=yes)
-
-if test "$digest" != no; then
-  dnl In order to compile digest, we should look for need libdes.
-  if test -d $digest; then
-    CPPFLAGS="$CPPFLAGS -I$digest/include"
-    LDFLAGS="$LDFLAGS -L$digest/lib"
-  fi
-  if test "$with_des" = no; then
-    AC_MSG_WARN(No DES support for DIGEST-MD5)
-  fi
-fi
-
-AC_MSG_CHECKING(DIGEST-MD5)
-if test "$digest" != no -a $ac_cv_lib_crypto_MD5_Init = yes; then
-  AC_MSG_RESULT(enabled)
-  SASL_MECHS="$SASL_MECHS libdigestmd5.la"
-  if test "$enable_obsolete_digest_attr" = yes; then
-    CPPFLAGS="$CPPFLAGS -DOBSOLETE_DIGEST_ATTR=1"
-  fi
-  if test "$enable_static" = yes; then
-    SASL_STATIC_SRCS="$SASL_STATIC_SRCS \$(top_srcdir)/plugins/digestmd5.c"
-    SASL_STATIC_OBJS="$SASL_STATIC_OBJS digestmd5.o"
-    SASL_STATIC_LIBS="$SASL_STATIC_LIBS $LIB_DES"
-    AC_DEFINE(STATIC_DIGESTMD5, [], [Link DIGEST-MD5 Statically])
-  fi
-else
-  AC_MSG_RESULT(disabled)
-fi
-
 dnl SCRAM
 AC_ARG_ENABLE(scram, [  --enable-scram            enable SCRAM authentication [[yes]] ],
   scram=$enableval,
@@ -478,7 +438,6 @@ else
 fi
 
 dnl Kerberos based Mechanisms
-SASL_KERBEROS_V4_CHK
 SASL_GSSAPI_CHK
 
 if test "$gssapi" != "no"; then
@@ -633,27 +592,6 @@ else
   AC_MSG_RESULT(disabled)
 fi
 
-dnl NTLM
-AC_ARG_ENABLE(ntlm, [  --enable-ntlm           enable unsupported NTLM authentication [[no]] ],
-  ntlm=$enableval,
-  ntlm=no)
-
-AC_MSG_CHECKING(NTLM)
-if test "$ntlm" != no; then
-  AC_MSG_RESULT(enabled)
-  NTLM_LIBS="-lcrypto $LIB_RSAREF"
-  AC_SUBST(NTLM_LIBS)
-
-  SASL_MECHS="$SASL_MECHS libntlm.la"
-  if test "$enable_static" = yes; then
-    SASL_STATIC_SRCS="$SASL_STATIC_SRCS \$(top_srcdir)/plugins/ntlm.c"
-    SASL_STATIC_OBJS="$SASL_STATIC_OBJS ntlm.o"
-    AC_DEFINE(STATIC_NTLM,[],[Link NTLM Statically])
-  fi
-else
-  AC_MSG_RESULT(disabled)
-fi
-
 dnl PASSDSS
 AC_ARG_ENABLE(passdss, [  --enable-passdss        enable PASSDSS authentication (experimental) [[no]] ],
   passdss=$enableval,
@@ -675,6 +613,54 @@ else
   AC_MSG_RESULT(disabled)
 fi
 
+dnl OPAQUE
+AC_CHECK_LIB(libopaque, opaque_CreateCredentialRequest, [AC_SUBST([LIB_OPAQUE], ["-lopaque"]) AC_DEFINE([HAVE_LIBOPAQUE], [1],[opaque library])],have_libopaque="no",-lopaque)
+
+AC_ARG_ENABLE(opaque, [  --enable-opaque            enable OPAQUE authentication [[yes]] ],
+  opaque=$enableval,
+  opaque=yes)
+
+if test "$have_libopaque" = no; then
+  AC_CHECK_LIB(sodium, crypto_core_ristretto255_scalar_invert, [AC_SUBST([LIB_SODIUM], ["-lsodium"]) AC_DEFINE([HAVE_LIBSODIUM], [1],[sodium library])],have_sodium="no",-lsodium)
+  AC_CHECK_LIB(sodium, crypto_kdf_hkdf_sha512_expand,need_internal_hkdf="no",need_internal_hkdf="yes",-lsodium)
+
+  if test "$have_sodium" = no; then
+    AC_MSG_WARN(neither libopaque nor libsodium found -- OPAQUE will be disabled)
+    opaque=no
+  else
+    opaque=internal
+  fi
+else
+  opaque=yes
+fi
+
+AC_MSG_CHECKING(OPAQUE)
+if test "$opaque" != no; then
+  AM_CONDITIONAL(OPAQUE_INTERNAL,test "$opaque" = internal)
+  AM_CONDITIONAL(INTERNAL_HKDF,test "$need_internal_hkdf" = yes)
+  if test "$opaque" = internal; then
+    AC_MSG_RESULT(internal)
+    OPAQUE_LIBS="-lsodium"
+    if test "$enable_static" = yes; then
+        SASL_STATIC_SRCS="$SASL_STATIC_SRCS \$(top_srcdir)/plugins/opaque.c \$(top_srcdir)/plugins/opaque_impl.c"
+        SASL_STATIC_OBJS="$SASL_STATIC_OBJS opaque.o opaque_impl.o kdf_hkdf_sha512."
+        AC_DEFINE(STATIC_OPAQUE, [], [Link OPAQUE Statically])
+    fi
+  else
+    AC_MSG_RESULT(enabled)
+    OPAQUE_LIBS="-lopaque"
+
+    if test "$enable_static" = yes; then
+        SASL_STATIC_SRCS="$SASL_STATIC_SRCS \$(top_srcdir)/plugins/opaque.c"
+        SASL_STATIC_OBJS="$SASL_STATIC_OBJS opaque.o kdf_hkdf_sha512.o"
+        AC_DEFINE(STATIC_OPAQUE, [], [Link OPAQUE Statically])
+    fi
+  fi
+  SASL_MECHS="$SASL_MECHS libopaque.la"
+  AC_SUBST(OPAQUE_LIBS)
+else
+  AC_MSG_RESULT(disabled)
+fi
 
 AC_MSG_CHECKING(to include LDAP support)
 AC_ARG_WITH(ldap, [  --with-ldap=DIR         use LDAP (in DIR) for saslauthd [no] ],
@@ -1263,7 +1249,7 @@ AC_CHECK_HEADERS_ONCE([sys/time.h])
 
 AC_HEADER_DIRENT
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(crypt.h des.h dlfcn.h fcntl.h limits.h malloc.h paths.h strings.h sys/file.h sys/time.h syslog.h time.h unistd.h inttypes.h sys/uio.h sys/param.h sysexits.h stdarg.h varargs.h krb5.h netinet/in.h netdb.h sys/un.h string.h termios.h getopt.h arpa/inet.h sys/socket.h)
+AC_CHECK_HEADERS(crypt.h dlfcn.h fcntl.h limits.h malloc.h paths.h strings.h sys/file.h sys/time.h syslog.h time.h unistd.h inttypes.h sys/uio.h sys/param.h sysexits.h stdarg.h varargs.h krb5.h netinet/in.h netdb.h sys/un.h string.h termios.h getopt.h arpa/inet.h sys/socket.h)
 
 IPv6_CHECK_SS_FAMILY()
 IPv6_CHECK_SA_LEN()

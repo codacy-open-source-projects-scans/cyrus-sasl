@@ -18,12 +18,9 @@ this distribution:
 
 *  ANONYMOUS
 *  CRAM-MD5
-*  DIGEST-MD5 (requires OpenSSL libcrypto)
 *  EXTERNAL
 *  GSSAPI (MIT Kerberos 5, Heimdal Kerberos 5 or CyberSafe)
-*  KERBEROS_V4 (requires OpenSSL libcrypto)
 *  LOGIN
-*  NTLM (requires OpenSSL libcrypto)
 *  OTP (requires OpenSSL libcrypto)
 *  PASSDSS (requires OpenSSL libcrypto)
 *  PLAIN
@@ -32,7 +29,7 @@ this distribution:
 
 
 The library also supports storing user secrets in either a hash
-database (e.g. Berkeley DB, gdbm, ndbm), LDAP, or in a SQL database
+database (e.g. lmdb, gdbm, ndbm), LDAP, or in a SQL database
 (MySQL, Postgres).
 
 
