@@ -4,9 +4,6 @@
 #ifndef SASLPLUG_H
 #define SASLPLUG_H 1
 
-#ifndef HMAC_MD5_H
-#include "hmac-md5.h"
-#endif
 #ifndef PROP_H
 #include "prop.h"
 #endif
@@ -64,18 +61,6 @@ typedef struct sasl_utils {
     sasl_mutex_unlock_t *mutex_unlock;
     sasl_mutex_free_t *mutex_free;
 
-#ifdef HAVE_MD5
-    /* MD5 hash and HMAC functions */
-    void (*hmac_md5)(const unsigned char *text, int text_len,
-		     const unsigned char *key, int key_len,
-		     unsigned char [16]);
-    void (*hmac_md5_update)(HMAC_MD5_CTX *, const void *data, unsigned long len);
-    void (*hmac_md5_final)(unsigned char [16], HMAC_MD5_CTX *);
-    void (*hmac_md5_precalc)(HMAC_MD5_STATE *,
-			     const unsigned char *key, int len);
-    void (*hmac_md5_import)(HMAC_MD5_CTX *, HMAC_MD5_STATE *);
-#endif
-
     /* mechanism utility functions (same as above): */
     int (*mkchal)(sasl_conn_t *conn, char *buf, unsigned maxlen,
 		  unsigned hostflag);
@@ -86,9 +71,9 @@ typedef struct sasl_utils {
     /* This allows recursive calls to the sasl_checkpass() routine from
      * within a SASL plug-in.  This MUST NOT be used in the PLAIN mechanism
      * as sasl_checkpass MAY be a front-end for the PLAIN mechanism.
-     * This is intended for use by the non-standard LOGIN mechanism and
-     * potentially by a future mechanism which uses public-key technology to
-     * set up a lightweight encryption layer just for sending a password.
+     * This is intended for use potentially by a future mechanism
+	 * which uses public-key technology to set up a lightweight
+	 * encryption layer just for sending a password.
      */
     int (*checkpass)(sasl_conn_t *conn,
 		     const char *user, unsigned userlen,
