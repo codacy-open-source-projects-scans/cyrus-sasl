@@ -27,6 +27,8 @@ LINK32EXE=$(LINK32)
 LINK32LIB=link.exe /lib /nologo
 
 SYS_LIBS=ws2_32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib
+# Used by OpenSSL when it's compiled as static lib
+SYS_LIBS=$(SYS_LIBS) crypt32.lib
 COMMON_CPPFLAGS=/D "WIN32" /D "_WINDOWS" /D "_MBCS" /D "_USRDLL" /D "GCC_FALLTHROUGH="
 
 # Disable all static plugins (this is not supported yet)
@@ -109,6 +111,20 @@ OPENSSL_LIBPATH=D:\openssl\engine-0.9.6g-md3\lib
 !IF "$(VERBOSE)" != "0"
 !MESSAGE Defaulting OpenSSL library path to $(OPENSSL_LIBPATH).
 !ENDIF
+!ENDIF
+
+OPENSSL_LIBS="/libpath:$(OPENSSL_LIBPATH)"
+!IF      EXISTS($(OPENSSL_LIBPATH)\libcrypto.lib)
+# OpenSSL >= 1.1
+OPENSSL_LIBS=$(OPENSSL_LIBS) libcrypto.lib
+OPENSSL_LIB_PATH=$(OPENSSL_LIBPATH)\libcrypto.lib
+!ELSE IF EXISTS($(OPENSSL_LIBPATH)\libeay32.lib)
+# OpenSSL <= 1.0
+OPENSSL_LIBS=$(OPENSSL_LIBS) libeay32.lib
+!ELSE
+# Don't error out because during 'nmake install', variable 'OPENSSL_LIBS'
+# can be missing but it's not used anyway.
+OPENSSL_LIBS=$(OPENSSL_LIBS) failed_to_identify_openssl.lib
 !ENDIF
 
 !IF "$(GSSAPI_INCLUDE)" == ""
