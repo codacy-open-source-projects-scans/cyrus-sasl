@@ -129,7 +129,7 @@ pygments_style = 'sphinx'
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 
-html_theme = 'cyrus'
+html_theme = 'sphinx_rtd_theme'
 
 # This gets used to generate the 'Edit in Github' link in the breadcrumbs header
 # Used to form the url https://github.com/github_user/github_repo/blob/github_version/conf_py_path/<file>.source_suffix
@@ -416,22 +416,22 @@ epub_exclude_files = ['search.html']
 # When this is updated, you may also need to update the version and release
 # definitions listed above to stay up to date.
 rst_prolog = """
-.. |imap_last_stable_version| replace:: 3.8.4
-.. |imap_last_stable_branch| replace:: `cyrus-imapd-3.8`
-.. |imap_last_stable_next_version| replace:: 3.8.4 + patches
-.. |imap_current_stable_version| replace:: 3.10.0
-.. |imap_current_stable_branch| replace:: `cyrus-imapd-3.10`
-.. |imap_current_stable_next_version| replace:: 3.10.0 + patches
-.. |imap_latest_development_version| replace:: 3.11.0-alpha0
+.. |imap_last_stable_version| replace:: 3.10.2
+.. |imap_last_stable_branch| replace:: `cyrus-imapd-3.10`
+.. |imap_last_stable_next_version| replace:: 3.10.2 + patches
+.. |imap_current_stable_version| replace:: 3.12.1
+.. |imap_current_stable_branch| replace:: `cyrus-imapd-3.12`
+.. |imap_current_stable_next_version| replace:: 3.12.1 + patches
+.. |imap_latest_development_version| replace:: 3.13.0-alpha0
 .. |imap_latest_development_branch| replace:: master
 .. |sasl_current_stable_version| replace:: 2.1.28
 .. |imap_stable_release_notes| raw:: html
 
-    <a href="3.10/x/3.10.0.html">3.10.0</a>
+    <a href="3.12/x/3.12.1.html">3.12.1</a>
 
 .. |imap_development_release_notes| raw:: html
 
-    <a href="https://www.cyrusimap.org/dev/imap/download/release-notes/3.11/x/3.11.0-alpha0.html">3.11.0-alpha0</a>
+    <a href="https://www.cyrusimap.org/dev/imap/download/release-notes/3.13/x/3.13.0-alpha0.html">3.13.0-alpha0</a>
 
 """
 
@@ -444,10 +444,9 @@ rst_prolog += """
 .. |CMU| replace:: :abbr:`CMU (Carnegie Mellon University)`
 """
 
-# Use this as :task:`18`
+# Use this as :issue:`18`
 extlinks = {
-        'task':('https://git.cyrus.foundation/T%s', 'Task #'),
-        'issue':('https://github.com/cyrusimap/cyrus-imapd/issues/%s', 'Issue #'),
+        'issue':('https://github.com/cyrusimap/cyrus-imapd/issues/%s', 'Issue #%s'),
         'cyrus-stable':('http://www.cyrusimap.org/stable%s',None),
         'cyrus-dev':('http://www.cyrusimap.org/dev%s',None),
     }
