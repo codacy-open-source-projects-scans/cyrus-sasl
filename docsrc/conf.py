@@ -419,19 +419,19 @@ rst_prolog = """
 .. |imap_last_stable_version| replace:: 3.10.2
 .. |imap_last_stable_branch| replace:: `cyrus-imapd-3.10`
 .. |imap_last_stable_next_version| replace:: 3.10.2 + patches
-.. |imap_current_stable_version| replace:: 3.12.1
+.. |imap_current_stable_version| replace:: 3.12.2
 .. |imap_current_stable_branch| replace:: `cyrus-imapd-3.12`
-.. |imap_current_stable_next_version| replace:: 3.12.1 + patches
-.. |imap_latest_development_version| replace:: 3.13.0-alpha0
+.. |imap_current_stable_next_version| replace:: 3.12.2 + patches
+.. |imap_latest_development_version| replace:: 3.13.3
 .. |imap_latest_development_branch| replace:: master
 .. |sasl_current_stable_version| replace:: 2.1.28
 .. |imap_stable_release_notes| raw:: html
 
-    <a href="3.12/x/3.12.1.html">3.12.1</a>
+    <a href="3.12/x/3.12.2.html">3.12.2</a>
 
 .. |imap_development_release_notes| raw:: html
 
-    <a href="https://www.cyrusimap.org/dev/imap/download/release-notes/3.13/x/3.13.0-alpha0.html">3.13.0-alpha0</a>
+    <a href="https://www.cyrusimap.org/dev/imap/download/release-notes/3.13/x/3.13.3.html">3.13.3</a>
 
 """
 
